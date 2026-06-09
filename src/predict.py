@@ -19,20 +19,17 @@ def load_production_artifacts():
 
 def run_credit_scoring_pipeline(new_customer_data):
     """Processes raw customer data and returns a credit scoring decision."""
-    # 1. Load our saved machine learning dependencies
     model, scaler = load_production_artifacts()
-    
-    # 2. Convert input dictionary to a starting DataFrame
     df_input = pd.DataFrame([new_customer_data])
     
-    # 3. Apply Feature Engineering & Native Calculations
+    # Feature Engineering
     df_input['loan_to_income_ratio'] = df_input['loan_amnt'] / df_input['person_income']
     df_input['loan_percent_income'] = df_input['loan_amnt'] / df_input['person_income']
     
-    # 4. Reconstruct the exact 23 columns in their precise training order
+    # 23 features matching the exact training signature order
     training_features = [
         'person_age', 'person_income', 'person_emp_length', 'loan_amnt', 'loan_int_rate',
-        'loan_percent_income', 'cb_person_nodefault_placeholder', # assigned below dynamically
+        'loan_percent_income', 'cb_person_cred_hist_length',
         'person_home_ownership_OTHER', 'person_home_ownership_OWN', 'person_home_ownership_RENT',
         'loan_intent_EDUCATION', 'loan_intent_HOMEIMPROVEMENT', 'loan_intent_MEDICAL',
         'loan_intent_PERSONAL', 'loan_intent_VENTURE',
@@ -40,13 +37,8 @@ def run_credit_scoring_pipeline(new_customer_data):
         'cb_person_default_on_file_Y', 'loan_to_income_ratio'
     ]
     
-    # Overwrite the placeholder to ensure exact naming replication
-    training_features[6] = 'cb_person_cred_hist_length'
-    
-    # Create an empty DataFrame structured with all 23 columns filled with zeros
     df_processed = pd.DataFrame(0, index=[0], columns=training_features)
     
-    # Map numerical inputs directly across
     numerical_cols = [
         'person_age', 'person_income', 'person_emp_length', 'loan_amnt', 
         'loan_int_rate', 'loan_percent_income', 'cb_person_cred_hist_length', 'loan_to_income_ratio'
@@ -54,7 +46,6 @@ def run_credit_scoring_pipeline(new_customer_data):
     for col in numerical_cols:
         df_processed[col] = df_input[col].values
         
-    # Map categorical text items by dynamically switching their specific dummy column to 1
     home_col = f"person_home_ownership_{new_customer_data['person_home_ownership']}"
     if home_col in df_processed.columns:
         df_processed[home_col] = 1
@@ -70,36 +61,51 @@ def run_credit_scoring_pipeline(new_customer_data):
     if new_customer_data['cb_person_default_on_file'] == 'Y':
         df_processed['cb_person_default_on_file_Y'] = 1
         
-    # 5. Apply Feature Scaling using the imported calibrated parameters
     scaled_features = scaler.transform(df_processed)
-    
-    # 6. Generate the risk assessment class and the probability confidence score
     risk_prediction = model.predict(scaled_features)[0]
     risk_probability = model.predict_proba(scaled_features)[0][1]
     
-    # 7. Convert prediction code into actionable business profiles
     result = "BAD CREDIT RISK (Deny Application)" if risk_prediction == 1 else "GOOD CREDIT RISK (Approve Application)"
     
-    print("\n=========================================")
-    print("      REAL-TIME RISK DECISION ENGINE     ")
     print("=========================================")
     print(f"Applicant Evaluation:  {result}")
     print(f"Risk Probability:      {risk_probability * 100:.2f}%")
-    print("=========================================\n")
+    print("=========================================")
 
 if __name__ == "__main__":
-    # Mocking a live incoming customer application profile
-    sample_applicant = {
-        'person_age': 25,
-        'person_income': 40000,
-        'person_emp_length': 2,
-        'loan_amnt': 25000,              
-        'loan_int_rate': 14.5,
-        'cb_person_cred_hist_length': 3,   # Added missing history feature
-        'person_home_ownership': 'RENT',
-        'loan_intent': 'PERSONAL',
-        'loan_grade': 'D',
+    print("\n🚀 INITIALIZING RISK EVALUATION TESTS...")
+
+    # TEST CASE 1: Low-Risk Applicant (Prime Profile)
+    prime_applicant = {
+        'person_age': 35,
+        'person_income': 700000,          
+        'person_emp_length': 10,
+        'loan_amnt': 15000,              
+        'loan_int_rate': 7.5,
+        'cb_person_cred_hist_length': 8,
+        'person_home_ownership': 'MORTGAGE',
+        'loan_intent': 'VENTURE',
+        'loan_grade': 'A',
         'cb_person_default_on_file': 'N'
     }
     
-    run_credit_scoring_pipeline(sample_applicant)
+    # TEST CASE 2: High-Risk Applicant (Subprime Profile)
+    subprime_applicant = {
+        'person_age': 22,
+        'person_income': 200000,          
+        'person_emp_length': 1,
+        'loan_amnt': 450000,             
+        'loan_int_rate': 16.5,
+        'cb_person_cred_hist_length': 1,
+        'person_home_ownership': 'RENT',
+        'loan_intent': 'PERSONAL',
+        'loan_grade': 'E',
+        'cb_person_default_on_file': 'Y'
+    }
+    
+    print("\n--- RUNNING APPLICANT PROFILE 1 (HIGH INCOME / LOW DEBT) ---")
+    run_credit_scoring_pipeline(prime_applicant)
+    
+    print("\n--- RUNNING APPLICANT PROFILE 2 (LOW INCOME / HIGH DEBT) ---")
+    run_credit_scoring_pipeline(subprime_applicant)
+    print()
